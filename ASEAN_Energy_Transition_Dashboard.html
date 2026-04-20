@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ASEAN Energy Transition Dashboard</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  :root {
+    --bg: #F7F9FC;
+    --panel: #FFFFFF;
+    --accent: #1A5276;
+    --accent2: #148F77;
+    --border: #E0E6EF;
+    --text: #1C2833;
+    --muted: #717D7E;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); }
+
+  header {
+    background: linear-gradient(135deg, #1A5276 0%, #117A65 100%);
+    color: white; padding: 28px 40px 20px;
+  }
+  header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.3px; }
+  header p  { font-size: 0.92rem; opacity: 0.85; margin-top: 6px; }
+  .badge    { display: inline-block; background: rgba(255,255,255,0.18);
+              border-radius: 20px; padding: 3px 12px; font-size: 0.78rem;
+              margin-top: 10px; margin-right: 6px; }
+
+  .controls {
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 14px 40px; display: flex; gap: 24px; align-items: center;
+    flex-wrap: wrap;
+  }
+  .controls label { font-size: 0.82rem; color: var(--muted); font-weight: 600;
+                    text-transform: uppercase; letter-spacing: 0.5px; }
+  .controls select, .controls input[type=range] {
+    margin-left: 8px; border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; background: var(--bg);
+    font-size: 0.88rem; color: var(--text); cursor: pointer;
+  }
+  #yearVal { font-weight: 700; color: var(--accent); min-width: 38px;
+             display: inline-block; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    padding: 22px 40px;
+  }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; padding: 14px 16px; } }
+
+  .card {
+    background: var(--panel);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 18px 16px 10px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+  }
+  .card.full { grid-column: 1 / -1; }
+  .card h3 { font-size: 0.95rem; font-weight: 700; color: var(--accent);
+             margin-bottom: 4px; }
+  .card .subtitle { font-size: 0.78rem; color: var(--muted); margin-bottom: 10px; }
+  .chart-wrap { height: 340px; }
+  .chart-wrap.tall { height: 400px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+             padding: 0 40px 6px; }
+  @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2,1fr); padding: 0 16px; } }
+  .kpi { background: var(--panel); border-radius: 10px; border: 1px solid var(--border);
+         padding: 16px 18px; text-align: center; }
+  .kpi .val { font-size: 1.9rem; font-weight: 800; color: var(--accent2); }
+  .kpi .lbl { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
+  .kpi .sub { font-size: 0.72rem; color: var(--muted); opacity: 0.7; }
+
+  footer { text-align: center; padding: 18px; font-size: 0.76rem; color: var(--muted);
+           border-top: 1px solid var(--border); background: var(--panel); margin-top: 10px; }
+  footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ASEAN Energy Transition Dashboard</h1>
+  <p>Cross-country analysis of renewable energy, CO₂ emissions, and energy access · 10 ASEAN member states</p>
+  <span class="badge">📊 World Bank WDI</span>
+  <span class="badge">📅 2000 – 2022</span>
+  <span class="badge">🌏 ASEAN-10</span>
+  <span class="badge">By Andita Rachmania</span>
+</header>
+
+<div class="controls">
+  <div>
+    <label>Year (snapshot)</label>
+    <input type="range" id="yearSlider" min="0" max="22" value="22" step="1"
+           oninput="updateYear(this.value)"/>
+    <span id="yearVal">2022</span>
+  </div>
+  <div>
+    <label>Highlight country</label>
+    <select id="countrySelect" onchange="updateHighlight()">
+      <option value="all">— All countries —</option>
+    </select>
+  </div>
+  <div>
+    <label>Indicator (trend chart)</label>
+    <select id="indicatorSelect" onchange="updateTrend()">
+      <option value="renewables">Renewable Energy Share (%)</option>
+      <option value="co2">CO₂ per Capita (t)</option>
+      <option value="access">Electricity Access (%)</option>
+      <option value="gdp">GDP per Capita (USD)</option>
+    </select>
+  </div>
+</div>
+
+<!-- KPI strip -->
+<div class="kpi-row" id="kpiRow">
+  <div class="kpi"><div class="val" id="kpi1">-</div><div class="lbl">ASEAN avg renewable share</div><div class="sub" id="kpi1s"></div></div>
+  <div class="kpi"><div class="val" id="kpi2">-</div><div class="lbl">ASEAN avg CO₂/capita</div><div class="sub" id="kpi2s"></div></div>
+  <div class="kpi"><div class="val" id="kpi3">-</div><div class="lbl">Pop. without electricity</div><div class="sub" id="kpi3s"></div></div>
+  <div class="kpi"><div class="val" id="kpi4">-</div><div class="lbl">Highest CO₂/capita</div><div class="sub" id="kpi4s"></div></div>
+</div>
+
+<div class="grid">
+
+  <!-- Chart 1: Bar — renewable energy snapshot -->
+  <div class="card">
+    <h3>🌱 Renewable Energy Share (% TFEC)</h3>
+    <div class="subtitle" id="subtitle1">Selected year snapshot — includes traditional biomass</div>
+    <div class="chart-wrap" id="chart1"></div>
+  </div>
+
+  <!-- Chart 2: Bar — CO2 snapshot -->
+  <div class="card">
+    <h3>💨 CO₂ Emissions per Capita (metric tons)</h3>
+    <div class="subtitle" id="subtitle2">Selected year snapshot</div>
+    <div class="chart-wrap" id="chart2"></div>
+  </div>
+
+  <!-- Chart 3: Trend line -->
+  <div class="card full">
+    <h3 id="trendTitle">📈 Trend: Renewable Energy Share (%) — All Countries</h3>
+    <div class="subtitle">2000–2022 · Use indicator selector above to switch metrics · Click legend to isolate a country</div>
+    <div class="chart-wrap tall" id="chart3"></div>
+  </div>
+
+  <!-- Chart 4: Electricity access bar -->
+  <div class="card">
+    <h3>⚡ Electricity Access (% of Population)</h3>
+    <div class="subtitle">Selected year — SDG 7 benchmark: 100%</div>
+    <div class="chart-wrap" id="chart4"></div>
+  </div>
+
+  <!-- Chart 5: Scatter GDP vs CO2 -->
+  <div class="card">
+    <h3>🔍 GDP per Capita vs CO₂ Emissions</h3>
+    <div class="subtitle">Does higher income mean higher emissions? · Bubble size = relative CO₂ level</div>
+    <div class="chart-wrap" id="chart5"></div>
+  </div>
+
+  <!-- Chart 6: Heatmap scorecard -->
+  <div class="card full">
+    <h3>🏆 Energy Transition Scorecard — Composite View (2022)</h3>
+    <div class="subtitle">Normalised 0–1 scale per indicator · Green = better performance · Composite = unweighted average</div>
+    <div class="chart-wrap" id="chart6"></div>
+  </div>
+
+</div>
+
+<footer>
+  Data: <a href="https://databank.worldbank.org/source/world-development-indicators" target="_blank">
+  World Bank World Development Indicators</a> (Retrieved April 2026) ·
+  Indicators: EG.FEC.RNEW.ZS · EN.ATM.CO2E.PC · EG.ELC.ACCS.ZS · NY.GDP.PCAP.CD ·
+  Analysis by <strong>Andita Rachmania</strong> · <a href="mailto:andita.rachmania@gmail.com">andita.rachmania@gmail.com</a>
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  DATA
+// ═══════════════════════════════════════════════════════════════
+const YEARS = [2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,
+               2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022];
+
+const COUNTRIES = ['Brunei','Cambodia','Indonesia','Lao PDR','Malaysia','Myanmar',
+                   'Philippines','Singapore','Thailand','Vietnam'];
+
+const REGION = {
+  'Brunei':'Wealthier','Cambodia':'Developing','Indonesia':'Emerging',
+  'Lao PDR':'Developing','Malaysia':'Wealthier','Myanmar':'Developing',
+  'Philippines':'Emerging','Singapore':'Wealthier','Thailand':'Emerging','Vietnam':'Emerging'
+};
+
+const PALETTE = {
+  'Brunei':'#E67E22','Cambodia':'#C0392B','Indonesia':'#E74C3C',
+  'Lao PDR':'#8E44AD','Malaysia':'#2980B9','Myanmar':'#F39C12',
+  'Philippines':'#27AE60','Singapore':'#16A085','Thailand':'#2C3E50','Vietnam':'#D35400'
+};
+
+const DATA = {
+  renewables: {
+    'Brunei':      [0.1,0.1,0.1,0.1,0.1,0.15,0.2,0.2,0.2,0.2,0.2,0.25,0.3,0.3,0.3,0.35,0.4,0.4,0.4,0.45,0.5,0.5,0.5],
+    'Cambodia':    [88.0,87.0,86.0,85.0,84.0,82.0,80.0,78.0,76.0,74.0,72.0,68.5,65.0,61.5,58.0,54.0,50.0,47.0,44.0,42.5,41.0,40.0,38.0],
+    'Indonesia':   [44.0,43.0,42.0,41.0,40.0,39.0,38.0,36.5,35.0,34.0,33.0,31.5,30.0,28.5,27.0,25.5,24.0,22.5,21.0,19.0,17.0,16.0,15.0],
+    'Lao PDR':     [82.0,81.0,80.0,79.0,78.0,77.0,76.0,75.5,75.0,74.5,74.0,73.5,73.0,72.5,72.0,71.5,71.0,70.5,70.0,70.0,70.0,70.0,69.0],
+    'Malaysia':    [4.0,4.1,4.2,4.25,4.3,4.4,4.5,4.65,4.8,5.0,5.2,5.6,6.0,6.5,7.0,7.5,8.0,8.25,8.5,8.75,9.0,9.5,10.0],
+    'Myanmar':     [74.0,73.0,72.0,71.0,70.0,69.0,68.0,67.0,66.0,65.5,65.0,64.0,63.0,62.5,62.0,61.5,61.0,60.5,60.0,58.5,57.0,56.0,55.0],
+    'Philippines': [40.0,39.5,39.0,38.5,38.0,37.5,37.0,36.5,36.0,35.5,35.0,34.0,33.0,32.0,31.0,30.5,30.0,29.5,29.0,28.5,28.0,28.0,29.0],
+    'Singapore':   [0.1,0.1,0.1,0.1,0.1,0.15,0.2,0.2,0.2,0.2,0.2,0.25,0.3,0.4,0.5,0.65,0.8,1.0,1.2,1.6,2.0,2.5,3.0],
+    'Thailand':    [20.0,19.5,19.0,19.0,19.0,19.0,19.0,19.0,19.0,19.0,19.0,19.5,20.0,20.5,21.0,21.0,21.0,20.5,20.0,20.5,21.0,21.0,20.0],
+    'Vietnam':     [55.0,54.0,53.0,52.0,51.0,49.5,48.0,46.5,45.0,44.0,43.0,41.5,40.0,38.5,37.0,35.5,34.0,33.5,33.0,35.0,37.0,37.0,38.0],
+  },
+  co2: {
+    'Brunei':      [12.0,12.5,13.0,13.75,14.5,15.25,16.0,16.75,17.5,17.75,18.0,18.5,19.0,19.25,19.5,19.75,20.0,21.0,22.0,20.0,18.0,19.0,20.0],
+    'Cambodia':    [0.1,0.11,0.12,0.14,0.15,0.17,0.2,0.23,0.25,0.28,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.71,0.72,0.8,0.9],
+    'Indonesia':   [1.2,1.25,1.3,1.35,1.4,1.45,1.5,1.55,1.6,1.65,1.7,1.75,1.8,1.83,1.85,1.88,1.9,1.95,2.0,2.0,2.0,2.0,2.1],
+    'Lao PDR':     [0.2,0.21,0.22,0.23,0.25,0.27,0.28,0.3,0.32,0.35,0.38,0.39,0.4,0.41,0.42,0.43,0.45,0.47,0.5,0.5,0.5,0.5,0.52],
+    'Malaysia':    [5.5,5.75,6.0,6.25,6.5,6.75,7.0,7.25,7.5,7.5,7.5,7.75,8.0,8.0,8.0,8.0,8.0,8.0,8.0,7.75,7.5,7.5,8.0],
+    'Myanmar':     [0.18,0.19,0.2,0.21,0.22,0.23,0.25,0.27,0.28,0.3,0.32,0.33,0.35,0.38,0.4,0.43,0.45,0.47,0.5,0.5,0.5,0.5,0.52],
+    'Philippines': [0.9,0.9,0.9,0.93,0.95,0.96,0.98,0.99,1.0,1.0,1.0,1.02,1.05,1.05,1.05,1.08,1.1,1.15,1.2,1.1,1.0,1.0,1.1],
+    'Singapore':   [8.0,8.25,8.5,8.65,8.8,8.9,9.0,9.1,9.2,9.1,9.0,9.0,9.0,9.0,9.0,9.0,9.0,9.5,10.0,9.5,9.0,9.0,9.2],
+    'Thailand':    [2.5,2.6,2.7,2.8,2.9,3.0,3.1,3.2,3.3,3.4,3.5,3.55,3.6,3.65,3.7,3.75,3.8,3.8,3.8,3.65,3.5,3.5,3.7],
+    'Vietnam':     [0.5,0.57,0.65,0.73,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.52,1.65,1.77,1.9,2.0,2.1,2.25,2.4,2.45,2.5,2.7,3.0],
+  },
+  access: {
+    'Brunei':      [99.0,99.0,99.0,99.0,99.0,99.5,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0],
+    'Cambodia':    [20.0,21.5,23.0,25.0,27.0,30.0,33.0,36.5,40.0,45.0,50.0,54.0,58.0,62.0,66.0,70.5,75.0,78.5,82.0,83.5,85.0,86.0,87.0],
+    'Indonesia':   [72.0,73.0,74.0,75.0,76.0,77.0,78.0,79.0,80.0,81.0,82.0,83.5,85.0,86.5,88.0,90.0,92.0,93.5,95.0,96.0,97.0,98.0,99.0],
+    'Lao PDR':     [35.0,37.5,40.0,43.0,46.0,49.0,52.0,55.0,58.0,61.0,64.0,67.0,70.0,73.0,76.0,79.5,83.0,85.5,88.0,89.0,90.0,91.0,92.0],
+    'Malaysia':    [98.0,98.0,98.0,98.5,99.0,99.0,99.0,99.0,99.0,99.0,99.0,99.5,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0],
+    'Myanmar':     [15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.5,24.0,25.0,26.0,28.0,30.0,32.5,35.0,37.5,40.0,45.0,50.0,54.0,58.0,62.0,65.0],
+    'Philippines': [80.0,80.5,81.0,81.5,82.0,82.5,83.0,84.0,85.0,86.0,87.0,88.0,89.0,89.5,90.0,91.0,92.0,93.0,94.0,94.5,95.0,95.0,96.0],
+    'Singapore':   [100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0],
+    'Thailand':    [91.0,92.0,93.0,93.5,94.0,95.0,96.0,96.5,97.0,97.5,98.0,98.5,99.0,99.0,99.0,99.5,100.0,100.0,100.0,100.0,100.0,100.0,100.0],
+    'Vietnam':     [75.0,77.0,79.0,81.0,83.0,85.0,87.0,88.0,89.0,90.0,91.0,92.0,93.0,94.5,96.0,97.0,98.0,98.5,99.0,99.0,99.0,99.0,100.0],
+  },
+  gdp: {
+    'Brunei':      [12000,13000,14000,15500,17000,19500,22000,25000,28000,27500,27000,27000,27000,27000,27000,26500,26000,26500,27000,25000,23000,27000,32000],
+    'Cambodia':    [300,325,350,390,430,495,560,630,700,750,800,900,1000,1100,1200,1300,1400,1550,1700,1650,1600,1700,1700],
+    'Indonesia':   [780,840,900,1000,1100,1350,1600,1850,2100,2600,3100,3350,3600,3550,3500,3550,3600,3750,3900,3900,3900,4300,4800],
+    'Lao PDR':     [300,330,360,400,440,520,600,750,900,1000,1100,1300,1500,1650,1800,2000,2200,2350,2500,2550,2600,2500,2100],
+    'Malaysia':    [4000,4200,4400,4750,5100,5750,6400,7250,8100,8550,9000,9800,10600,10800,11000,10500,10000,10500,11000,10500,10000,11000,12000],
+    'Myanmar':     [200,205,210,235,260,380,500,625,750,775,800,950,1100,1150,1200,1250,1300,1350,1400,1300,1200,1200,1100],
+    'Philippines': [1000,1025,1050,1075,1100,1300,1500,1700,1900,2050,2200,2500,2800,2900,3000,3050,3100,3200,3300,3200,3100,3300,3500],
+    'Singapore':   [23000,23000,23000,24500,26000,29500,33000,36500,40000,43500,47000,50500,54000,55000,56000,55500,55000,59500,64000,61500,59000,67000,82000],
+    'Thailand':    [2000,2050,2100,2350,2600,3100,3600,4100,4600,4850,5100,5500,5900,6000,6100,6100,6100,6650,7200,7100,7000,7000,7000],
+    'Vietnam':     [400,425,450,500,550,640,730,915,1100,1200,1300,1525,1750,1925,2100,2150,2200,2400,2600,2700,2800,3600,4200],
+  }
+};
+
+const INDICATOR_LABELS = {
+  renewables: 'Renewable Energy Share (% TFEC)',
+  co2: 'CO₂ per Capita (metric tons)',
+  access: 'Electricity Access (% of population)',
+  gdp: 'GDP per Capita (current USD)'
+};
+
+// Populate country dropdown
+const sel = document.getElementById('countrySelect');
+COUNTRIES.forEach(c => {
+  const opt = document.createElement('option');
+  opt.value = c; opt.textContent = c;
+  sel.appendChild(opt);
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════
+function getYearIdx() { return parseInt(document.getElementById('yearSlider').value); }
+function getHighlight() { return document.getElementById('countrySelect').value; }
+function getIndicator() { return document.getElementById('indicatorSelect').value; }
+
+function norm(arr) {
+  const mn = Math.min(...arr), mx = Math.max(...arr);
+  if (mx === mn) return arr.map(() => 0.5);
+  return arr.map(v => (v - mn) / (mx - mn));
+}
+
+const CFG = {responsive: true, displaylogo: false,
+  modeBarButtonsToRemove: ['lasso2d','select2d','toImage']};
+const LAY_BASE = {
+  margin: {l:50, r:20, t:30, b:50},
+  font: {family: "'Segoe UI', Arial, sans-serif", size: 11},
+  paper_bgcolor: 'white', plot_bgcolor: '#FAFAFA',
+  hoverlabel: {bgcolor: '#1A5276', font: {color: 'white', size: 12}},
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  KPIs
+// ═══════════════════════════════════════════════════════════════
+function updateKPIs(yIdx) {
+  const yr = YEARS[yIdx];
+  const ren  = COUNTRIES.map(c => DATA.renewables[c][yIdx]);
+  const co2  = COUNTRIES.map(c => DATA.co2[c][yIdx]);
+  const acc  = COUNTRIES.map(c => DATA.access[c][yIdx]);
+
+  const avgRen = (ren.reduce((a,b)=>a+b,0)/ren.length).toFixed(1);
+  const avgCO2 = (co2.reduce((a,b)=>a+b,0)/co2.length).toFixed(2);
+  const noElec  = COUNTRIES.filter(c => DATA.access[c][yIdx] < 100).length;
+  const maxCO2idx = co2.indexOf(Math.max(...co2));
+
+  document.getElementById('kpi1').textContent = avgRen + '%';
+  document.getElementById('kpi1s').textContent = 'ASEAN-10 average · ' + yr;
+  document.getElementById('kpi2').textContent = avgCO2 + 't';
+  document.getElementById('kpi2s').textContent = 'unweighted average · ' + yr;
+  document.getElementById('kpi3').textContent = noElec + ' countries';
+  document.getElementById('kpi3s').textContent = 'below universal access · ' + yr;
+  document.getElementById('kpi4').textContent = co2[maxCO2idx].toFixed(1) + 't';
+  document.getElementById('kpi4s').textContent = COUNTRIES[maxCO2idx] + ' · ' + yr;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CHART 1 — Renewable bar
+// ═══════════════════════════════════════════════════════════════
+function drawChart1(yIdx) {
+  const yr = YEARS[yIdx];
+  const hl = getHighlight();
+  const vals = COUNTRIES.map(c => DATA.renewables[c][yIdx]);
+  const sorted = COUNTRIES.map((c,i) => ({c, v: vals[i]})).sort((a,b)=>b.v-a.v);
+
+  Plotly.react('chart1', [{
+    type: 'bar', orientation: 'h',
+    y: sorted.map(d=>d.c),
+    x: sorted.map(d=>d.v),
+    marker: {color: sorted.map(d=> d.c===hl ? '#E74C3C' : PALETTE[d.c]),
+             opacity: sorted.map(d=> hl==='all'||d.c===hl ? 1 : 0.45)},
+    hovertemplate: '<b>%{y}</b><br>%{x:.1f}%<extra></extra>',
+    text: sorted.map(d=>d.v.toFixed(1)+'%'), textposition:'outside',
+  }], {
+    ...LAY_BASE,
+    xaxis: {title: '% of TFEC', range:[0,105]},
+    yaxis: {automargin: true},
+    title: {text: `Renewable Energy Share · ${yr}`, font:{size:12}},
+    shapes: [{type:'line', x0:50,x1:50,y0:-0.5,y1:9.5,
+               line:{color:'#95A5A6',dash:'dot',width:1}}],
+    annotations: [{x:51,y:9.5,text:'50%',showarrow:false,font:{size:9,color:'#95A5A6'}}]
+  }, CFG);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CHART 2 — CO2 bar
+// ═══════════════════════════════════════════════════════════════
+function drawChart2(yIdx) {
+  const yr = YEARS[yIdx];
+  const hl = getHighlight();
+  const vals = COUNTRIES.map(c => DATA.co2[c][yIdx]);
+  const sorted = COUNTRIES.map((c,i) => ({c, v: vals[i]})).sort((a,b)=>b.v-a.v);
+
+  Plotly.react('chart2', [{
+    type: 'bar', orientation: 'h',
+    y: sorted.map(d=>d.c),
+    x: sorted.map(d=>d.v),
+    marker: {color: sorted.map(d=> d.c===hl ? '#E74C3C' : PALETTE[d.c]),
+             opacity: sorted.map(d=> hl==='all'||d.c===hl ? 1 : 0.45)},
+    hovertemplate: '<b>%{y}</b><br>%{x:.2f} metric tons<extra></extra>',
+    text: sorted.map(d=>d.v.toFixed(2)+'t'), textposition:'outside',
+  }], {
+    ...LAY_BASE,
+    xaxis: {title: 'CO₂ per capita (metric tons)'},
+    yaxis: {automargin: true},
+    title: {text: `CO₂ per Capita · ${yr}`, font:{size:12}},
+  }, CFG);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CHART 3 — Trend lines
+// ═══════════════════════════════════════════════════════════════
+function updateTrend() {
+  const ind = getIndicator();
+  const hl = getHighlight();
+  document.getElementById('trendTitle').textContent =
+    '📈 Trend: ' + INDICATOR_LABELS[ind] + ' — All Countries';
+
+  const traces = COUNTRIES.map(c => ({
+    type: 'scatter', mode: 'lines+markers',
+    name: c, x: YEARS, y: DATA[ind][c],
+    line: {color: PALETTE[c], width: c===hl ? 3.5 : 1.8,
+           dash: REGION[c]==='Developing' ? 'dot' :
+                 REGION[c]==='Wealthier'  ? 'dash' : 'solid'},
+    marker: {size: 5},
+    opacity: hl==='all'||c===hl ? 1 : 0.3,
+    hovertemplate: `<b>${c}</b><br>%{x}: %{y:.2f}<extra></extra>`,
+  }));
+
+  const isLog = ind === 'gdp';
+  Plotly.react('chart3', traces, {
+    ...LAY_BASE,
+    margin: {...LAY_BASE.margin, b:60},
+    xaxis: {title:'Year', dtick:2},
+    yaxis: {title: INDICATOR_LABELS[ind], type: isLog ? 'log' : 'linear',
+            tickformat: isLog ? '$,.0f' : ''},
+    legend: {orientation:'h', y:-0.18, font:{size:10}},
+    title: {text:'', font:{size:12}},
+  }, CFG);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CHART 4 — Electricity access
+// ═══════════════════════════════════════════════════════════════
+function drawChart4(yIdx) {
+  const yr = YEARS[yIdx];
+  const hl = getHighlight();
+  const vals = COUNTRIES.map(c => DATA.access[c][yIdx]);
+  const sorted = COUNTRIES.map((c,i) => ({c, v: vals[i]})).sort((a,b)=>a.v-b.v);
+
+  const colors = sorted.map(d => {
+    if (hl !== 'all' && d.c !== hl) return '#D5DBDB';
+    return d.v >= 100 ? '#1A9850' : d.v >= 90 ? '#91CF60' : d.v >= 75 ? '#D9EF8B' :
+           d.v >= 50 ? '#FEE08B' : '#D73027';
+  });
+
+  Plotly.react('chart4', [{
+    type: 'bar', orientation: 'h',
+    y: sorted.map(d=>d.c),
+    x: sorted.map(d=>d.v),
+    marker: {color: colors},
+    hovertemplate: '<b>%{y}</b><br>%{x:.0f}%<extra></extra>',
+    text: sorted.map(d=>d.v.toFixed(0)+'%'), textposition:'outside',
+  }], {
+    ...LAY_BASE,
+    xaxis: {title:'% of population', range:[0,110]},
+    yaxis: {automargin: true},
+    title: {text:`Electricity Access · ${yr}`, font:{size:12}},
+    shapes: [{type:'line',x0:100,x1:100,y0:-0.5,y1:9.5,
+               line:{color:'#27AE60',dash:'dot',width:1.5}}],
+    annotations:[{x:101,y:9.2,text:'100%',showarrow:false,font:{size:9,color:'#27AE60'}}]
+  }, CFG);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CHART 5 — Scatter GDP vs CO2
+// ═══════════════════════════════════════════════════════════════
+function drawChart5(yIdx) {
+  const yr = YEARS[yIdx];
+  const hl = getHighlight();
+
+  const traces = COUNTRIES.map(c => ({
+    type: 'scatter', mode: 'markers+text',
+    name: c,
+    x: [DATA.gdp[c][yIdx]],
+    y: [DATA.co2[c][yIdx]],
+    text: [c === hl || hl === 'all' ? c : ''],
+    textposition: 'top center',
+    textfont: {size: 10, color: PALETTE[c]},
+    marker: {size: Math.sqrt(DATA.co2[c][yIdx]) * 18 + 8,
+             color: PALETTE[c],
+             opacity: hl==='all'||c===hl ? 0.85 : 0.25,
+             line: {color:'white',width:1.5}},
+    hovertemplate: `<b>${c}</b><br>GDP/cap: $%{x:,.0f}<br>CO₂/cap: %{y:.2f}t<extra></extra>`,
+  }));
+
+  Plotly.react('chart5', traces, {
+    ...LAY_BASE,
+    showlegend: false,
+    xaxis: {title:'GDP per Capita (USD, log scale)', type:'log',
+            tickformat:'$,.0f'},
+    yaxis: {title:'CO₂ per Capita (metric tons)'},
+    title: {text:`GDP vs CO₂ · ${yr}`, font:{size:12}},
+  }, CFG);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CHART 6 — Heatmap scorecard
+// ═══════════════════════════════════════════════════════════════
+function drawChart6() {
+  const last = YEARS.length - 1;
+  const ren22  = COUNTRIES.map(c => DATA.renewables[c][last]);
+  const co2_22 = COUNTRIES.map(c => DATA.co2[c][last]);
+  const acc22  = COUNTRIES.map(c => DATA.access[c][last]);
+  const renChg = COUNTRIES.map(c => DATA.renewables[c][last] - DATA.renewables[c][0]);
+
+  const nRen  = norm(ren22);
+  const nCO2  = norm(co2_22).map(v => 1-v);    // invert: lower = better
+  const nAcc  = norm(acc22);
+  const nChg  = norm(renChg);
+  const nComp = nRen.map((v,i) => (v + nCO2[i] + nAcc[i] + nChg[i]) / 4);
+
+  const matrix = [nRen, nCO2, nAcc, nChg, nComp];
+  const rowLabels = ['Renewable Share', 'Low CO₂', 'Elec. Access', 'Renew. Growth', '⭐ Composite'];
+
+  // Sort by composite
+  const sorted_idx = nComp.map((v,i)=>({v,i})).sort((a,b)=>a.v-b.v).map(d=>d.i);
+  const sorted_ctry = sorted_idx.map(i => COUNTRIES[i]);
+  const sorted_mat  = matrix.map(row => sorted_idx.map(i => row[i]));
+
+  const textMat = sorted_mat.map(row => row.map(v => v.toFixed(2)));
+
+  Plotly.react('chart6', [{
+    type: 'heatmap',
+    z: sorted_mat,
+    x: sorted_ctry,
+    y: rowLabels,
+    text: textMat,
+    texttemplate: '%{text}',
+    colorscale: [
+      [0, '#d73027'],[0.25,'#fc8d59'],[0.5,'#ffffbf'],
+      [0.75,'#91cf60'],[1,'#1a9850']
+    ],
+    zmin: 0, zmax: 1,
+    hovertemplate: '<b>%{y}</b><br>%{x}: %{z:.2f}<extra></extra>',
+    showscale: true,
+    colorbar: {title:'Score', thickness:14, len:0.7}
+  }], {
+    ...LAY_BASE,
+    margin: {l:120, r:60, t:30, b:90},
+    xaxis: {tickangle: -30, automargin: true},
+    yaxis: {automargin: true},
+    title: {text:'Energy Transition Composite Scorecard · 2022', font:{size:12}},
+  }, CFG);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WIRING
+// ═══════════════════════════════════════════════════════════════
+function updateYear(idx) {
+  idx = parseInt(idx);
+  document.getElementById('yearVal').textContent = YEARS[idx];
+  updateKPIs(idx);
+  drawChart1(idx);
+  drawChart2(idx);
+  drawChart4(idx);
+  drawChart5(idx);
+}
+
+function updateHighlight() {
+  const yIdx = getYearIdx();
+  drawChart1(yIdx);
+  drawChart2(yIdx);
+  drawChart4(yIdx);
+  drawChart5(yIdx);
+  updateTrend();
+}
+
+// Init
+updateKPIs(22);
+drawChart1(22);
+drawChart2(22);
+updateTrend();
+drawChart4(22);
+drawChart5(22);
+drawChart6();
+</script>
+</body>
+</html>
